@@ -13,16 +13,16 @@ import CoreGraphics
 @objc public protocol FlexibleSteppedProgressBarDelegate {
     
     @objc optional func progressBar(_ progressBar: FlexibleSteppedProgressBar,
-                              willSelectItemAtIndex index: Int)
+                                    willSelectItemAtIndex index: Int)
     
     @objc optional func progressBar(_ progressBar: FlexibleSteppedProgressBar,
-                              didSelectItemAtIndex index: Int)
+                                    didSelectItemAtIndex index: Int)
     
     @objc optional func progressBar(_ progressBar: FlexibleSteppedProgressBar,
-                              canSelectItemAtIndex index: Int) -> Bool
+                                    canSelectItemAtIndex index: Int) -> Bool
     
     @objc optional func progressBar(_ progressBar: FlexibleSteppedProgressBar,
-                              textAtIndex index: Int, position: FlexibleSteppedProgressBarTextLocation) -> String
+                                    textAtIndex index: Int, position: FlexibleSteppedProgressBarTextLocation) -> String
     
 }
 
@@ -30,6 +30,8 @@ import CoreGraphics
     
     //MARK: - Public properties
     
+    
+    open var isArabic: Bool = false
     /// The number of displayed points in the component
     @IBInspectable open var numberOfPoints: Int = 3 {
         didSet {
@@ -45,14 +47,14 @@ import CoreGraphics
             }
         }
         didSet {
-//            animationRendering = true
+            //            animationRendering = true
             self.setNeedsDisplay()
         }
     }
     
     open var completedTillIndex: Int = -1 {
         willSet(newValue){
-
+            
         }
         didSet {
             self.setNeedsDisplay()
@@ -136,8 +138,8 @@ import CoreGraphics
             self.setNeedsDisplay()
         }
     }
-
-
+    
+    
     fileprivate var _progressRadius: CGFloat {
         get {
             if(progressRadius == 0.0 || progressRadius > self.bounds.height / 2.0) {
@@ -294,13 +296,13 @@ import CoreGraphics
         self.addGestureRecognizer(swipeGestureRecognizer)
         
         self.layer.addSublayer(self.clearCentersLayer)
-
+        
         self.layer.addSublayer(self.backgroundLayer)
         self.layer.addSublayer(self.progressLayer)
         self.layer.addSublayer(self.clearSelectionLayer)
         self.layer.addSublayer(self.selectionCenterLayer)
         self.layer.addSublayer(self.selectionLayer)
-
+        
         self.layer.addSublayer(self.roadToSelectionLayer)
         self.progressLayer.mask = self.maskLayer
         
@@ -351,7 +353,7 @@ import CoreGraphics
             let selectedPath = self._shapePathForSelected(self.centerPoints[currentIndex], aRadius: _radius)
             selectionLayer.path = selectedPath.cgPath
             selectionLayer.fillColor = currentSelectedCenterColor.cgColor
-
+            
             if !useLastState {
                 let selectedPathCenter = self._shapePathForSelectedPathCenter(self.centerPoints[currentIndex], aRadius: _progressRadius)
                 selectionCenterLayer.path = selectedPathCenter.cgPath
@@ -390,18 +392,26 @@ import CoreGraphics
                     roadToSelectionLayer.strokeColor = selectedBackgoundColor.cgColor
                     roadToSelectionLayer.lineWidth = progressLineHeight
                 }
-
+                
             }
         }
         self.renderTopTextIndexes()
         self.renderBottomTextIndexes()
         self.renderTextIndexes()
         
-        let progressCenterPoints = Array<CGPoint>(centerPoints[0..<(completedTillIndex+1)])
+        /* Arabic */
+        var currentProgressCenterPoint: CGPoint?
+        if isArabic {
+            let progressCenterPoints = centerPoints[completedTillIndex..<(self.centerPoints.count)]
+            currentProgressCenterPoint = progressCenterPoints.first
+        } else {
+            let progressCenterPoints = Array<CGPoint>(centerPoints[0..<(completedTillIndex+1)])
+            currentProgressCenterPoint = progressCenterPoints.last
+        }
         
-        if let currentProgressCenterPoint = progressCenterPoints.last {
+        if let currentProgressCenterPoint = currentProgressCenterPoint {
             
-            let maskPath = self._maskPath(currentProgressCenterPoint)
+            let maskPath = isArabic ? self._maskPathArabic(currentProgressCenterPoint) : self._maskPath(currentProgressCenterPoint)
             maskLayer.path = maskPath.cgPath
             
             CATransaction.begin()
@@ -677,15 +687,15 @@ import CoreGraphics
         }
         return path
     }
-
+    
     fileprivate func _shapePathForSelected(_ centerPoint: CGPoint, aRadius: CGFloat) -> UIBezierPath {
         return UIBezierPath(roundedRect: CGRect(x: centerPoint.x - aRadius, y: centerPoint.y - aRadius, width: 2.0 * aRadius, height: 2.0 * aRadius), cornerRadius: aRadius)
     }
     
     fileprivate func _shapePathForLastState(_ center: CGPoint) -> UIBezierPath {
-//        let angle = CGFloat(M_PI)/4
+        //        let angle = CGFloat(M_PI)/4
         let path = UIBezierPath()
-//        path.addArcWithCenter(center, radius: self._progressRadius + _radius, startAngle: angle, endAngle: 2*CGFloat(M_PI) + CGFloat(M_PI)/4, clockwise: true)
+        //        path.addArcWithCenter(center, radius: self._progressRadius + _radius, startAngle: angle, endAngle: 2*CGFloat(M_PI) + CGFloat(M_PI)/4, clockwise: true)
         path.addArc(withCenter: center, radius: self._progressRadius + lastStateOuterCircleLineWidth, startAngle: 0, endAngle: 4*CGFloat.pi, clockwise: true)
         return path
     }
@@ -693,7 +703,7 @@ import CoreGraphics
     fileprivate func _shapePathForSelectedPathCenter(_ centerPoint: CGPoint, aRadius: CGFloat) -> UIBezierPath {
         return UIBezierPath(roundedRect: CGRect(x: centerPoint.x - aRadius, y: centerPoint.y - aRadius, width: 2.0 * aRadius, height: 2.0 * aRadius), cornerRadius: aRadius)
     }
-
+    
     /**
      Compute the mask path
      
@@ -715,11 +725,37 @@ import CoreGraphics
         maskPath.addLine(to: CGPoint(x: currentProgressCenterPoint.x + xOffset, y: currentProgressCenterPoint.y - self._progressLineHeight))
         
         maskPath.addArc(withCenter: currentProgressCenterPoint, radius: self._progressRadius, startAngle: -angle, endAngle: angle, clockwise: true)
-
+        
         
         maskPath.addLine(to: CGPoint(x: currentProgressCenterPoint.x + xOffset, y: self.bounds.height))
         
         maskPath.addLine(to: CGPoint(x: 0.0, y: self.bounds.height))
+        
+        
+        maskPath.close()
+        
+        return maskPath
+    }
+    
+    fileprivate func _maskPathArabic(_ currentProgressCenterPoint: CGPoint) -> UIBezierPath {
+        
+        let angle = self._progressLineHeight / 2.0 / self._progressRadius;
+        let xOffset = cos(angle) * self._progressRadius
+        
+        let maskPath = UIBezierPath()
+        
+        maskPath.move(to: CGPoint(x: self.bounds.width, y: 0.0))
+        
+        maskPath.addLine(to: CGPoint(x: currentProgressCenterPoint.x - xOffset, y: 0.0))
+        
+        maskPath.addLine(to: CGPoint(x: currentProgressCenterPoint.x - xOffset, y: currentProgressCenterPoint.y - self._progressLineHeight))
+        
+        maskPath.addArc(withCenter: currentProgressCenterPoint, radius: self._progressRadius, startAngle: -angle, endAngle: angle, clockwise: false)
+        
+        
+        maskPath.addLine(to: CGPoint(x: currentProgressCenterPoint.x - xOffset, y: self.bounds.height))
+        
+        maskPath.addLine(to: CGPoint(x: self.bounds.width, y: self.bounds.height))
         
         
         maskPath.close()
